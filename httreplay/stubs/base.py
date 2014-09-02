@@ -3,6 +3,7 @@ from cStringIO import StringIO
 import logging
 import quopri
 import zlib
+import os
 
 from ..recording import ReplayRecordingManager
 
@@ -23,6 +24,7 @@ class ReplayConnectionHelper:
     def __init__(self):
         self.__fake_send = False
         self.__recording_data = None
+        self.__passthru = False
 
     # Some hacks to manage the presence (or not) of the connection's
     # socket. Requests 2.x likes to set settings on the socket, but
@@ -113,9 +115,14 @@ class ReplayConnectionHelper:
             port=self.port,
         ))
 
+        # if the destination is localhost, let the request passthru
+        if self.__request['host'].startswith('localhost'):
+            logger.debug('Request to %s, setting passthru.' % self.__request['host'])
+            self.__passthru = True
+
         # endheaders() will eventually call send()
         logstr = '%(method)s %(host)s:%(port)s/%(url)s' % self.__request
-        if self.__request in self.__recording:
+        if not self.__passthru and self.__request in self.__recording:
             logger.debug("ReplayConnectionHelper found %s", logstr)
             self.__fake_send = True
         else:
@@ -137,7 +144,7 @@ class ReplayConnectionHelper:
         initial recording and later.
         """
         self.__socket_none()
-        replay_response = self.__recording.get(self.__request)
+        replay_response = not self.__passthru and self.__recording.get(self.__request)
 
         if replay_response:
             # Not calling the underlying getresponse(); do the same cleanup
@@ -151,10 +158,14 @@ class ReplayConnectionHelper:
 
             response = self._baseclass.getresponse(self)
             replay_response = ReplayHTTPResponse.make_replay_response(response)
-            self.__recording[self.__request] = replay_response
-            ReplayRecordingManager.save(
-                self.__recording,
-                self._replay_settings.replay_file_name)
+            if self.__passthru:
+                logger.debug('On passthru mode, not saving %s' %
+                             os.path.basename(self._replay_settings.replay_file_name))
+            else:
+                self.__recording[self.__request] = replay_response
+                ReplayRecordingManager.save(
+                    self.__recording,
+                    self._replay_settings.replay_file_name)
 
         else:
             logger.debug("ReplayConnectionHelper 418 (allow_network=False)")
