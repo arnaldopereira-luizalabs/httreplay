@@ -69,7 +69,7 @@ class ReplayConnectionHelper:
         val = self.__request['_headers'].get(header)
         # http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
         val = '' if val is None else val + ','
-        val += '\r\n\t'.join(values)
+        val += '\r\n\t'.join(map(str, values))
         self.__request['_headers'][header] = val
         return self._baseclass.putheader(self, header, *values)
 
