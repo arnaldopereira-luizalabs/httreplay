@@ -22,7 +22,6 @@ class ReplayConnectionHelper:
     requests and responses into a recording.
     """
     def __init__(self):
-        self.__fake_send = False
         self.__recording_data = None
         self.__passthru = False
 
@@ -48,6 +47,10 @@ class ReplayConnectionHelper:
                 ReplayRecordingManager.load(
                     self._replay_settings.replay_file_name)
         return recording
+
+    @property
+    def __real_send(self):
+        return bool(self.__passthru or self.__request not in self.__recording)
 
     # All httplib requests use the sequence putrequest(), putheader(),
     # then endheaders() -> _send_output() -> send()
@@ -122,17 +125,15 @@ class ReplayConnectionHelper:
 
         # endheaders() will eventually call send()
         logstr = '%(method)s %(host)s:%(port)s/%(url)s' % self.__request
-        if not self.__passthru and self.__request in self.__recording:
+        if not self.__real_send:
             logger.debug("ReplayConnectionHelper found %s", logstr)
-            self.__fake_send = True
         else:
             logger.debug("ReplayConnectionHelper trying %s", logstr)
         result = self._baseclass.endheaders(self, message_body)
-        self.__fake_send = False
         return result
 
     def send(self, msg):
-        if not self.__fake_send:
+        if self.__real_send:
             self.__socket_none()
             return self._baseclass.send(self, msg)
 
